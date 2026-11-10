@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Đọc Thành Tiếng</title>
+<meta name="description" content="Chuyển văn bản thành giọng nói miễn phí, chạy ngay trên trình duyệt, không cần đăng ký.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Fraunces:opsz,wght@9..144,600&display=swap" rel="stylesheet">
+<style>
+  /* Layout: một cột hẹp, ô nhập văn bản là trung tâm, bảng điều khiển giọng đọc nằm ngay bên dưới. */
+  :root {
+    --bg: #f4f1ea;
+    --surface: #fffdf8;
+    --ink: #1d2433;
+    --muted: #5d6677;
+    --line: #ddd7c9;
+    --accent: #0f6b5c;
+    --accent-ink: #ffffff;
+    --mark: #ffe08a;
+    --danger: #a3322b;
+    --font-display: "Fraunces", Georgia, serif;
+    --font-body: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14181f;
+      --surface: #1b212b;
+      --ink: #e8ebf1;
+      --muted: #9aa4b5;
+      --line: #2e3745;
+      --accent: #4fc3a8;
+      --accent-ink: #0c1f1a;
+      --mark: #6b5a1d;
+      --danger: #ef8a82;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14181f;
+    --surface: #1b212b;
+    --ink: #e8ebf1;
+    --muted: #9aa4b5;
+    --line: #2e3745;
+    --accent: #4fc3a8;
+    --accent-ink: #0c1f1a;
+    --mark: #6b5a1d;
+    --danger: #ef8a82;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.55;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; display: grid; gap: 20px; }
+  header h1 {
+    font-family: var(--font-display);
+    font-size: clamp(28px, 6vw, 40px);
+    line-height: 1.1;
+    margin: 0 0 6px;
+    text-wrap: balance;
+  }
+  header p { margin: 0; color: var(--muted); max-width: 60ch; }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+    display: grid;
+    gap: 14px;
+  }
+  label, .label { font-size: 14px; font-weight: 500; color: var(--muted); }
+
+  textarea, #reader {
+    width: 100%;
+    min-height: 220px;
+    max-height: 420px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--ink);
+    font: inherit;
+    line-height: 1.65;
+  }
+  textarea { resize: vertical; }
+  #reader { overflow-y: auto; white-space: pre-wrap; margin: 0; }
+  #reader mark { background: var(--mark); color: inherit; border-radius: 3px; padding: 1px 0; }
+  [hidden] { display: none !important; }
+
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+  .count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .samples { display: flex; flex-wrap: wrap; gap: 8px; }
+  button, select {
+    font: inherit;
+    color: var(--ink);
+  }
+  button {
+    cursor: pointer;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 8px 14px;
+    min-height: 40px;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; padding-inline: 22px; }
+  .chip { font-size: 13px; padding: 6px 12px; min-height: 34px; border-radius: 999px; }
+
+  select {
+    width: 100%;
+    min-height: 42px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+  }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  .controls { display: grid; gap: 14px; grid-template-columns: repeat(3, 1fr); }
+  .field { display: grid; gap: 6px; }
+  .field output { font-variant-numeric: tabular-nums; color: var(--ink); }
+  .field .head { display: flex; justify-content: space-between; }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  #status { min-height: 1.5em; font-size: 14px; color: var(--muted); margin: 0; }
+  #status.error { color: var(--danger); }
+  progress { width: 100%; height: 6px; accent-color: var(--accent); }
+
+  footer { font-size: 13px; color: var(--muted); }
+
+  @media (max-width: 560px) {
+    .controls { grid-template-columns: 1fr; }
+    .actions button { flex: 1 1 auto; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Đọc Thành Tiếng</h1>
+    <p>Dán văn bản, chọn giọng, bấm Đọc. Miễn phí, không cần tài khoản, mọi thứ chạy ngay trên trình duyệt của bạn.</p>
+  </header>
+
+  <section class="panel" aria-label="Văn bản cần đọc">
+    <div class="row">
+      <label for="text">Văn bản</label>
+      <span class="count" id="count">0 ký tự</span>
+    </div>
+    <textarea id="text" placeholder="Nhập hoặc dán nội dung cần đọc..." spellcheck="false"></textarea>
+    <pre id="reader" hidden aria-live="off"></pre>
+    <div class="row">
+      <div class="samples" role="group" aria-label="Văn bản mẫu">
+        <button type="button" class="chip" data-sample="vi">Mẫu tiếng Việt</button>
+        <button type="button" class="chip" data-sample="en">Mẫu tiếng Anh</button>
+        <button type="button" class="chip" id="clear">Xóa</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="Cài đặt giọng đọc">
+    <div class="field">
+      <label for="voice">Giọng đọc</label>
+      <select id="voice"></select>
+    </div>
+    <div class="controls">
+      <div class="field">
+        <div class="head"><label for="rate">Tốc độ</label><output id="rateOut">1.0×</output></div>
+        <input type="range" id="rate" min="0.5" max="2" step="0.1" value="1">
+      </div>
+      <div class="field">
+        <div class="head"><label for="pitch">Cao độ</label><output id="pitchOut">1.0</output></div>
+        <input type="range" id="pitch" min="0" max="2" step="0.1" value="1">
+      </div>
+      <div class="field">
+        <div class="head"><label for="volume">Âm lượng</label><output id="volumeOut">100%</output></div>
+        <input type="range" id="volume" min="0" max="1" step="0.05" value="1">
+      </div>
+    </div>
+    <div class="actions">
+      <button type="button" class="primary" id="play">Đọc</button>
+      <button type="button" id="pause" disabled>Tạm dừng</button>
+      <button type="button" id="stop" disabled>Dừng</button>
+    </div>
+    <progress id="progress" value="0" max="1" hidden></progress>
+    <p id="status" role="status"></p>
+  </section>
+
+  <footer>
+    Giọng đọc do trình duyệt và hệ điều hành cung cấp (Web Speech API), nên danh sách giọng khác nhau giữa Chrome, Edge, Safari và điện thoại. Văn bản không được gửi đi đâu cả.
+  </footer>
+</main>
+
+<script>
+(function () {
+  var synth = window.speechSynthesis;
+  var $ = function (id) { return document.getElementById(id); };
+  var textEl = $("text"), reader = $("reader"), voiceEl = $("voice");
+  var playBtn = $("play"), pauseBtn = $("pause"), stopBtn = $("stop");
+  var statusEl = $("status"), progressEl = $("progress"), countEl = $("count");
+  var voices = [];
+  var chunks = [], idx = 0, running = false, paused = false, session = 0;
+
+  var SAMPLES = {
+    vi: "Xin chào! Đây là trang chuyển văn bản thành giọng nói. Bạn có thể dán một bài báo, một đoạn truyện hoặc ghi chú học tập vào đây, rồi bấm nút Đọc để nghe. Hãy thử đổi tốc độ và giọng đọc để chọn cách nghe thoải mái nhất.",
+    en: "Hello! This page turns any text into speech right in your browser. Paste an article, a story or your study notes, press Read, and adjust the speed and voice until it sounds right."
+  };
+
+  function setStatus(msg, isError) {
+    statusEl.textContent = msg || "";
+    statusEl.className = isError ? "error" : "";
+  }
+
+  function store(key, val) { try { localStorage.setItem(key, val); } catch (e) {} }
+  function load(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+
+  if (!synth || typeof SpeechSynthesisUtterance === "undefined") {
+    setStatus("Trình duyệt này không hỗ trợ đọc văn bản. Hãy thử Chrome, Edge hoặc Safari bản mới.", true);
+    playBtn.disabled = true;
+    return;
+  }
+
+  /* ---------- Voices ---------- */
+  function populateVoices() {
+    voices = synth.getVoices().slice().sort(function (a, b) {
+      var av = /^vi/i.test(a.lang) ? 0 : 1, bv = /^vi/i.test(b.lang) ? 0 : 1;
+      return av - bv || a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name);
+    });
+    voiceEl.innerHTML = "";
+    if (!voices.length) {
+      var o = document.createElement("option");
+      o.textContent = "Đang tải danh sách giọng...";
+      voiceEl.appendChild(o);
+      return;
+    }
+    var saved = load("tts.voice");
+    voices.forEach(function (v, i) {
+      var o = document.createElement("option");
+      o.value = String(i);
+      o.textContent = v.name + " (" + v.lang + ")" + (v.localService ? "" : " · online");
+      voiceEl.appendChild(o);
+    });
+    var pick = voices.findIndex(function (v) { return v.voiceURI === saved; });
+    if (pick < 0) pick = voices.findIndex(function (v) { return /^vi/i.test(v.lang); });
+    if (pick < 0) pick = 0;
+    voiceEl.value = String(pick);
+    if (!/^vi/i.test(voices[pick].lang)) {
+      setStatus("Thiết bị chưa có giọng tiếng Việt. Bạn vẫn có thể dùng giọng khác, hoặc cài thêm giọng trong cài đặt hệ điều hành.");
+    }
+  }
+  populateVoices();
+  if (synth.onvoiceschanged !== undefined) synth.onvoiceschanged = populateVoices;
+  setTimeout(function () { if (!voices.length) populateVoices(); }, 600);
+
+  voiceEl.addEventListener("change", function () {
+    var v = voices[+voiceEl.value];
+    if (v) store("tts.voice", v.voiceURI);
+  });
+
+  /* ---------- Sliders ---------- */
+  function bindSlider(id, outId, fmt) {
+    var el = $(id), out = $(outId);
+    var saved = load("tts." + id);
+    if (saved !== null && !isNaN(+saved)) el.value = saved;
+    function sync() { out.textContent = fmt(+el.value); store("tts." + id, el.value); }
+    el.addEventListener("input", sync);
+    sync();
+  }
+  bindSlider("rate", "rateOut", function (v) { return v.toFixed(1) + "×"; });
+  bindSlider("pitch", "pitchOut", function (v) { return v.toFixed(1); });
+  bindSlider("volume", "volumeOut", function (v) { return Math.round(v * 100) + "%"; });
+
+  /* ---------- Text ---------- */
+  var savedText = load("tts.text");
+  textEl.value = savedText !== null && savedText !== "" ? savedText : SAMPLES.vi;
+  function updateCount() {
+    var n = textEl.value.length;
+    countEl.textContent = n.toLocaleString("vi-VN") + " ký tự";
+    store("tts.text", textEl.value);
+  }
+  textEl.addEventListener("input", updateCount);
+  updateCount();
+
+  document.querySelectorAll("[data-sample]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      stopAll();
+      textEl.value = SAMPLES[b.getAttribute("data-sample")];
+      updateCount();
+    });
+  });
+  $("clear").addEventListener("click", function () { stopAll(); textEl.value = ""; updateCount(); textEl.focus(); });
+
+  /* Chia văn bản thành các đoạn ngắn: Chrome tự dừng khi một lần đọc quá dài. */
+  function splitText(text) {
+    var out = [], re = /[^.!?…;\n]+[.!?…;]*\s*|\n+/g, m, pos = 0;
+    while ((m = re.exec(text)) !== null) {
+      var s = m[0];
+      if (!s.trim()) { pos += s.length; continue; }
+      while (s.length > 180) {
+        var cut = s.lastIndexOf(",", 180);
+        if (cut < 60) cut = s.lastIndexOf(" ", 180);
+        if (cut < 1) cut = 180;
+        out.push({ text: s.slice(0, cut + 1), start: m.index + (m[0].length - s.length) });
+        s = s.slice(cut + 1);
+      }
+      if (s.trim()) out.push({ text: s, start: m.index + (m[0].length - s.length) });
+    }
+    return out;
+  }
+
+  /* ---------- Playback ---------- */
+  function renderReader(i) {
+    var full = textEl.value;
+    var c = chunks[i];
+    reader.textContent = "";
+    if (!c) { reader.textContent = full; return; }
+    reader.appendChild(document.createTextNode(full.slice(0, c.start)));
+    var mk = document.createElement("mark");
+    mk.textContent = full.slice(c.start, c.start + c.text.length);
+    reader.appendChild(mk);
+    reader.appendChild(document.createTextNode(full.slice(c.start + c.text.length)));
+    mk.scrollIntoView({ block: "nearest" });
+  }
+
+  function setRunning(on) {
+    running = on;
+    if (!on) paused = false;
+    playBtn.disabled = on;
+    pauseBtn.disabled = !on;
+    stopBtn.disabled = !on;
+    pauseBtn.textContent = "Tạm dừng";
+    textEl.hidden = on;
+    reader.hidden = !on;
+    progressEl.hidden = !on;
+  }
+
+  function speakNext(mySession) {
+    if (mySession !== session) return;
+    if (idx >= chunks.length) { setRunning(false); setStatus("Đã đọc xong."); return; }
+    var c = chunks[idx];
+    var u = new SpeechSynthesisUtterance(c.text);
+    var v = voices[+voiceEl.value];
+    if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = "vi-VN"; }
+    u.rate = +$("rate").value;
+    u.pitch = +$("pitch").value;
+    u.volume = +$("volume").value;
+    u.onstart = function () {
+      if (mySession !== session) return;
+      renderReader(idx);
+      progressEl.value = idx / chunks.length;
+      setStatus("Đang đọc " + (idx + 1) + "/" + chunks.length);
+    };
+    u.onend = function () { if (mySession === session) { idx++; speakNext(mySession); } };
+    u.onerror = function (e) {
+      if (mySession !== session) return;
+      if (e.error === "interrupted" || e.error === "canceled") return;
+      setRunning(false);
+      setStatus("Không đọc được (" + e.error + "). Thử chọn giọng khác.", true);
+    };
+    synth.speak(u);
+  }
+
+  function stopAll() {
+    session++;
+    synth.cancel();
+    if (running) { setRunning(false); setStatus("Đã dừng."); }
+  }
+
+  playBtn.addEventListener("click", function () {
+    var text = textEl.value;
+    if (!text.trim()) { setStatus("Hãy nhập văn bản trước khi bấm Đọc.", true); textEl.focus(); return; }
+    synth.cancel();
+    session++;
+    chunks = splitText(text);
+    idx = 0;
+    setRunning(true);
+    setStatus("Đang chuẩn bị...");
+    speakNext(session);
+  });
+
+  pauseBtn.addEventListener("click", function () {
+    if (!running) return;
+    if (paused) {
+      synth.resume(); paused = false;
+      pauseBtn.textContent = "Tạm dừng";
+      setStatus("Đang đọc " + (idx + 1) + "/" + chunks.length);
+    } else {
+      synth.pause(); paused = true;
+      pauseBtn.textContent = "Tiếp tục";
+      setStatus("Đã tạm dừng.");
+    }
+  });
+
+  stopBtn.addEventListener("click", stopAll);
+  window.addEventListener("beforeunload", function () { synth.cancel(); });
+})();
+</script>
+</body>
+</html>

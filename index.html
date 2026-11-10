@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Đọc Thành Tiếng</title>
 <meta name="description" content="Chuyển văn bản thành giọng nói miễn phí, chạy ngay trên trình duyệt, không cần đăng ký.">
+<meta name="referrer" content="no-referrer">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Fraunces:opsz,wght@9..144,600&display=swap" rel="stylesheet">
@@ -200,7 +201,7 @@
   </section>
 
   <footer>
-    Giọng đọc do trình duyệt và hệ điều hành cung cấp (Web Speech API), nên danh sách giọng khác nhau giữa Chrome, Edge, Safari và điện thoại. Văn bản không được gửi đi đâu cả.
+    Các giọng trong danh sách do trình duyệt và hệ điều hành cung cấp, nên khác nhau giữa Chrome, Edge, Safari và điện thoại. Giọng "Google Dịch" gửi từng đoạn văn bản tới Google để tạo âm thanh, không hỗ trợ chỉnh cao độ. Các giọng còn lại không gửi văn bản đi đâu.
   </footer>
 </main>
 
@@ -213,6 +214,7 @@
   var statusEl = $("status"), progressEl = $("progress"), countEl = $("count");
   var voices = [];
   var chunks = [], idx = 0, running = false, paused = false, session = 0;
+  var audio = null, usingAudio = false;
 
   var SAMPLES = {
     vi: "Xin chào! Đây là trang chuyển văn bản thành giọng nói. Bạn có thể dán một bài báo, một đoạn truyện hoặc ghi chú học tập vào đây, rồi bấm nút Đọc để nghe. Hãy thử đổi tốc độ và giọng đọc để chọn cách nghe thoải mái nhất.",
@@ -239,13 +241,12 @@
       var av = /^vi/i.test(a.lang) ? 0 : 1, bv = /^vi/i.test(b.lang) ? 0 : 1;
       return av - bv || a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name);
     });
+    var previous = voiceEl.value;
     voiceEl.innerHTML = "";
-    if (!voices.length) {
-      var o = document.createElement("option");
-      o.textContent = "Đang tải danh sách giọng...";
-      voiceEl.appendChild(o);
-      return;
-    }
+    var g = document.createElement("option");
+    g.value = "gtts";
+    g.textContent = "Tiếng Việt · Google Dịch (online)";
+    voiceEl.appendChild(g);
     var saved = load("tts.voice");
     voices.forEach(function (v, i) {
       var o = document.createElement("option");
@@ -253,12 +254,19 @@
       o.textContent = v.name + " (" + v.lang + ")" + (v.localService ? "" : " · online");
       voiceEl.appendChild(o);
     });
-    var pick = voices.findIndex(function (v) { return v.voiceURI === saved; });
-    if (pick < 0) pick = voices.findIndex(function (v) { return /^vi/i.test(v.lang); });
-    if (pick < 0) pick = 0;
-    voiceEl.value = String(pick);
-    if (!/^vi/i.test(voices[pick].lang)) {
-      setStatus("Thiết bị chưa có giọng tiếng Việt. Bạn vẫn có thể dùng giọng khác, hoặc cài thêm giọng trong cài đặt hệ điều hành.");
+    var pick;
+    if (previous && previous !== "gtts" && voices[+previous]) {
+      pick = previous;
+    } else if (saved === "gtts") {
+      pick = "gtts";
+    } else {
+      var i = voices.findIndex(function (v) { return v.voiceURI === saved; });
+      if (i < 0) i = voices.findIndex(function (v) { return /^vi/i.test(v.lang); });
+      pick = i >= 0 ? String(i) : "gtts";
+    }
+    voiceEl.value = pick;
+    if (pick === "gtts") {
+      setStatus("Đang dùng giọng tiếng Việt của Google Dịch (cần có mạng). Nếu máy có giọng tiếng Việt riêng, bạn chọn trong danh sách.");
     }
   }
   populateVoices();
@@ -266,6 +274,7 @@
   setTimeout(function () { if (!voices.length) populateVoices(); }, 600);
 
   voiceEl.addEventListener("change", function () {
+    if (voiceEl.value === "gtts") { store("tts.voice", "gtts"); return; }
     var v = voices[+voiceEl.value];
     if (v) store("tts.voice", v.voiceURI);
   });
@@ -351,6 +360,30 @@
     if (mySession !== session) return;
     if (idx >= chunks.length) { setRunning(false); setStatus("Đã đọc xong."); return; }
     var c = chunks[idx];
+    function showProgress() {
+      if (mySession !== session) return;
+      renderReader(idx);
+      progressEl.value = idx / chunks.length;
+      setStatus("Đang đọc " + (idx + 1) + "/" + chunks.length);
+    }
+    if (voiceEl.value === "gtts") {
+      usingAudio = true;
+      var failed = function () {
+        if (mySession !== session) return;
+        setRunning(false);
+        setStatus("Không tải được giọng Google Dịch. Kiểm tra mạng, hoặc mở trang bằng Microsoft Edge để dùng giọng tiếng Việt có sẵn.", true);
+      };
+      audio = new Audio("https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=" + encodeURIComponent(c.text));
+      audio.playbackRate = +$("rate").value;
+      audio.volume = +$("volume").value;
+      audio.onplaying = showProgress;
+      audio.onended = function () { if (mySession === session) { idx++; speakNext(mySession); } };
+      audio.onerror = failed;
+      var p = audio.play();
+      if (p && p.catch) p.catch(function (e) { if (!e || e.name !== "AbortError") failed(); });
+      return;
+    }
+    usingAudio = false;
     var u = new SpeechSynthesisUtterance(c.text);
     var v = voices[+voiceEl.value];
     if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = "vi-VN"; }
@@ -376,6 +409,7 @@
   function stopAll() {
     session++;
     synth.cancel();
+    if (audio) { audio.onended = null; audio.onerror = null; audio.onplaying = null; audio.pause(); audio = null; }
     if (running) { setRunning(false); setStatus("Đã dừng."); }
   }
 
@@ -394,11 +428,13 @@
   pauseBtn.addEventListener("click", function () {
     if (!running) return;
     if (paused) {
-      synth.resume(); paused = false;
+      if (usingAudio && audio) audio.play(); else synth.resume();
+      paused = false;
       pauseBtn.textContent = "Tạm dừng";
       setStatus("Đang đọc " + (idx + 1) + "/" + chunks.length);
     } else {
-      synth.pause(); paused = true;
+      if (usingAudio && audio) audio.pause(); else synth.pause();
+      paused = true;
       pauseBtn.textContent = "Tiếp tục";
       setStatus("Đã tạm dừng.");
     }
